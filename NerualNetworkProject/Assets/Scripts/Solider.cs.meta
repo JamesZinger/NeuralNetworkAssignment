@@ -1,0 +1,11 @@
+fileFormatVersion: 2
+guid: 462bd07c5221e014db8f368a8d09d868
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences:
+  - AliveSprite: {fileID: 21300000, guid: 8d43e5cb841e2284ebe0736fb9089715, type: 3}
+  - DeadSprite: {fileID: 21300000, guid: 0eefed61d29de0a42adb4744455607c2, type: 3}
+  - Manager: {fileID: 11400000, guid: dbbf2c112182d254ba4997cb8320d116, type: 2}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 

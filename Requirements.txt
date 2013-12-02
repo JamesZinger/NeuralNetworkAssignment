@@ -1,0 +1,33 @@
+Requirements
+
+	Unit Variables
+		- Health
+		- Ammo
+		- Movement Speed
+		- Rotation Speed
+		- Damage
+
+	Power Ups
+		- Damage Boost
+		- Defence Boost
+		- Speed Boost
+
+	Traps
+		- Damage
+		- Speed Reduction 
+
+	Sucess Rate of Attacks
+		- About 50% hit chance on all attacks
+
+	AI Inputs
+		- Distance to the nearest 5 enemies
+		- Distance to the nearest 4 friendlies
+			- Health and Ammo
+		- Health and Ammo
+
+	AI Outputs
+		- run away
+		- fight valiantly
+		- heal friend
+		- hunt enemy
+		- find power up
