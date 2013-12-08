@@ -2,6 +2,8 @@
 using System.Collections;
 using System.Collections.Generic;
 using System;
+using System.Diagnostics;
+
 
 [RequireComponent( typeof( SpriteRenderer ) )]
 [RequireComponent( typeof( Rigidbody2D ) )]
@@ -9,41 +11,97 @@ using System;
 public class Solider : MonoBehaviour
 {
 
+	#region Enums & Consts
+
+	/// <summary> Values that represent Team.</summary>
 	public enum Team : byte
 	{
 		Red,
 		Blue
 	}
 
+	/// <summary> Values that represent for all possible effects on the solider.</summary>
 	public enum EffectType : byte
 	{
 		Damage,
 		Health,
 		Speed
 	}
+	
+	/// <summary> The solider maximum health.</summary>
+	public const float SOLIDER_MAX_HEALTH = 100;
 
-	public float Health = 100;
-	public int Ammo = 1000;
-	public float MovementSpeed = 5;
-	public float Damage = 10;
-	public float Range = 10;
+	/// <summary> The solider maximum ammo.</summary>
+	public const int SOLIDER_MAX_AMMO = 1000;
+
+	#endregion
+
+	/// <summary> The movement speed.</summary>
+	public float MovementSpeed = 5.0f;
+
+	/// <summary> The damage each shot does.</summary>
+	public float Damage = 10.0f;
+
+	/// <summary> The range that the solider can fire</summary>
+	public float Range = 10.0f;
+
+	/// <summary> The amount of shots per second.</summary>
+	public float ShotPerSecond = 10.0f;
 
 	public Team AssignedTeam;
 
 	public Sprite AliveSprite;
 	public Sprite DeadSprite;
 
-	private float EffectedDamage;
-	private float EffectedMovementSpeed;
-
-
-
-	bool isMoving;
-
 	[HideInInspector]
 	public LevelManager Manager;
 
+	#region Private Memebers
+
+	private float health = SOLIDER_MAX_HEALTH;
+
+	private int ammo = SOLIDER_MAX_AMMO;
+
+	private float EffectedDamage;
+	private float EffectedMovementSpeed;
+
+	private bool isMoving;
+
 	private Vector2 target;
+
+	#endregion 
+
+	#region Properties
+
+	/// <summary> (read only) Gets or sets the health.</summary>
+	public float Health
+	{
+		get { return health; }
+		private set { health = value; }
+	}
+
+	/// <summary> (read only) Gets or sets the ammo.</summary>
+	public int Ammo
+	{
+		get { return ammo; }
+		private set { ammo = value; }
+	}
+
+	/// <summary> (read only) Gets the damage per second.</summary>
+	public float DPS
+	{
+		get { return (Damage*ShotPerSecond); }
+	}
+
+	/// <summary> (read only) Gets the time between shots.</summary>
+	public float TimeBetweenShots
+	{
+		get { return (1/ShotPerSecond); }
+	}
+
+	#endregion
+
+	#region Unity Events
 
 	void Awake()
 	{
@@ -54,31 +112,17 @@ public class Solider : MonoBehaviour
 	{
 		Manager = GameObject.FindGameObjectWithTag( "Level" ).GetComponent<LevelManager>();
 
-		if ( Health > Manager.SoliderMaxHealth )
+		if ( Health > SOLIDER_MAX_HEALTH )
 		{
-			Health = Manager.SoliderMaxHealth;
-			Debug.LogWarning( "Solider health is greater than the levels max health" );
+			Health = SOLIDER_MAX_HEALTH;
+			UnityEngine.Debug.LogWarning( "Solider health is greater than the levels max health" );
 		}
 
-		if ( Ammo > Manager.SoliderMaxAmmo )
+		if ( Ammo > SOLIDER_MAX_AMMO )
 		{
-			Ammo = Manager.SoliderMaxAmmo;
-			Debug.LogWarning( "Solider ammo is greater than the levels max ammo" );
+			Ammo = SOLIDER_MAX_AMMO;
+			UnityEngine.Debug.LogWarning( "Solider ammo is greater than the levels max ammo" );
 		}
-
-		if ( MovementSpeed > Manager.SoliderMaxMoveSpeed )
-		{
-			MovementSpeed = Manager.SoliderMaxMoveSpeed;
-			Debug.LogWarning( "Solider movement speed is greater than the levels max movement speed" );
-		}
-
-
-		if ( Damage > Manager.SoliderMaxDamage )
-		{
-			Damage = Manager.SoliderMaxDamage;
-			Debug.LogWarning( "Solider damage is greater than the levels max damage" );
-		}
-
 
 		switch ( AssignedTeam )
 		{
@@ -94,7 +138,7 @@ public class Solider : MonoBehaviour
 				break;
 
 			default:
-				Debug.LogException( new ArgumentException( "Solider cannot have a null team" ) );
+				UnityEngine.Debug.LogException( new ArgumentException( "Solider cannot have a null team" ) );
 
 				break;
 		}
@@ -118,42 +162,14 @@ public class Solider : MonoBehaviour
 
 	void Update()
 	{
-		if ( Input.GetMouseButtonDown( 0 ) && AssignedTeam == Team.Red)
+		if ( Input.GetMouseButtonDown( 0 ) && AssignedTeam == Team.Red )
 		{
 			Vector3 pos = Camera.main.ScreenToWorldPoint( Input.mousePosition );
 
 			target = new Vector2( pos.x, pos.y );
 			isMoving = true;
 
-			SortedList<float, Solider> EnemyList = new SortedList<float,Solider>();
-			SortedList<float, Solider> FriendlyList = new SortedList<float, Solider>();
 
-			if ( AssignedTeam == Team.Red )
-			{
-				List<Solider> L = Manager.Teams[ Team.Blue ];
-
-				for ( int i = 0; i < L.Count; i++ )
-				{
-
-					float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
-					EnemyList.Add( dis, L[ i ] );
-				}
-
-				L = Manager.Teams[ Team.Red ];
-
-				for ( int i = 0; i < L.Count; i++ )
-				{
-
-					float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
-					FriendlyList.Add( dis, L[ i ] );
-				}
-
-			}
-
-			for ( int i = 0; i < EnemyList.Count; i++)
-			{
-				Debug.Log( "Distance At { " + i + " } : " + EnemyList.Keys[i] );
-			}
 		}
 	}
 
@@ -183,13 +199,57 @@ public class Solider : MonoBehaviour
 
 			if ( Diff.x < 0.2f && Diff.y < 0.2f )
 			{
+				Stopwatch sw = new Stopwatch();
+				sw.Start();
+
 				isMoving = false;
 				rigidbody2D.isKinematic = true;
+
+				Dictionary<float, Solider> EnemyList = new Dictionary<float,Solider>();
+				Dictionary<float, Solider> FriendlyList = new Dictionary<float,Solider>();
+
+				if ( AssignedTeam == Team.Red )
+				{
+					List<Solider> L = Manager.Teams[ Team.Blue ];
+
+					for ( int i = 0; i < L.Count; i++ )
+					{
+
+						float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
+						EnemyList.Add( dis, L[ i ] );
+					}
+
+					L = Manager.Teams[ Team.Red ];
+
+					for ( int i = 0; i < L.Count; i++ )
+					{
+
+						float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
+						FriendlyList.Add( dis, L[ i ] );
+					}
+
+				}
+
+				ArrayList SortedEnemyDis = new ArrayList();
+
+				SortedEnemyDis.AddRange( EnemyList.Keys );
+
+				SortedEnemyDis.Sort();
+
+				ArrayList SortedFriendlyDis = new ArrayList();
+
+				SortedFriendlyDis.AddRange( FriendlyList.Keys );
+
+				SortedFriendlyDis.Sort();
+
+				sw.Stop();
+
+				UnityEngine.Debug.Log( "Operation Took: " + sw.ElapsedTicks + " Ticks");
 			}
 
 			if ( Manager.Debugging )
 			{
-				Debug.DrawLine( transform.position, target, Color.green );
+				UnityEngine.Debug.DrawLine( transform.position, target, Color.green );
 			}
 		}
 		else
@@ -236,6 +296,9 @@ public class Solider : MonoBehaviour
 
 	}
 
+	#endregion
+
+	/// <summary> Executes the death action.</summary>
 	void OnDeath()
 	{
 
@@ -244,15 +307,26 @@ public class Solider : MonoBehaviour
 
 	}
 
-	void MoveTo( Vector2 Position )
+	/// <summary> Move to the specificed position.</summary>
+	/// <param name="Position"> The position to move toward.</param>
+	public void MoveTo( Vector2 Position )
 	{
 		target = Position;
 		isMoving = true;
 		rigidbody2D.isKinematic = false;
 	}
 
+	/// <summary> Applies the damage described by AppliedDamage.</summary>
+	/// <param name="AppliedDamage"> The applied damage.</param>
+	/// <returns> true if the Solider Died, false if it lived.</returns>
 	public bool ApplyDamage( float AppliedDamage )
 	{
+
+		if ( AppliedDamage < 0 )
+		{
+			UnityEngine.Debug.LogException( new ArgumentOutOfRangeException( "Tried to apply Negative Damage!" ) );
+		}
+
 		Health -= AppliedDamage;
 
 		if ( Health <= 0 )
@@ -263,6 +337,23 @@ public class Solider : MonoBehaviour
 		return false;
 	}
 
+	/// <summary> Applies the healing described by HealingAmount.</summary>
+	/// <param name="HealingAmount"> The healing amount.</param>
+	public void ApplyHealing( float HealingAmount )
+	{
+		if ( HealingAmount < 0 )
+		{
+			UnityEngine.Debug.LogException( new ArgumentOutOfRangeException( "Tried to apply Negative Healing!" ) );
+		}
+
+		Health += HealingAmount;
+
+		if ( Health > SOLIDER_MAX_HEALTH )
+			Health = SOLIDER_MAX_HEALTH;
+	}
+
+	/// <summary> Shoots the given target.</summary>
+	/// <param name="target"> Target for the Solider.</param>
 	public void Shoot( Solider target )
 	{
 		if ( !isMoving )
@@ -284,6 +375,11 @@ public class Solider : MonoBehaviour
 		}
 	}
 
+	/// <summary> (Coroutine) Applies the effect.</summary>
+	/// <param name="type">			  The type of the Effect.</param>
+	/// <param name="effectAmount">   The amount the effect has on the type.</param>
+	/// <param name="effectDuration"> Duration of the effect.</param>
+	/// <returns> An IEnumerator.</returns>
 	public IEnumerator ApplyEffect( EffectType type, float effectAmount, float effectDuration )
 	{
 
@@ -298,7 +394,7 @@ public class Solider : MonoBehaviour
 
 				if ( effectAmount >= 0 )
 				{
-					Health += effectAmount;
+					ApplyHealing( effectAmount );
 				}
 				else
 					ApplyDamage( effectAmount );

@@ -5,11 +5,6 @@ using System.Collections.Generic;
 public class LevelManager : MonoBehaviour
 {
 
-	public float SoliderMaxHealth = 2000;
-	public int SoliderMaxAmmo = 1000;
-	public float SoliderMaxMoveSpeed = 20;
-	public float SoliderMaxDamage = 100;
-
 	public Vector2 MaxPosition;
 	public Vector2 MinPosition;
 	public Rect PlayableArea;

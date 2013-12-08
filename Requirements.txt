@@ -23,11 +23,12 @@ Requirements
 		- Distance to the nearest 5 enemies
 		- Distance to the nearest 4 friendlies
 			- Health and Ammo
-		- Health and Ammo
+		- Solider Health and Ammo
+		- Distance to nearest powerup
 
 	AI Outputs
-		- run away
-		- fight valiantly
-		- heal friend
-		- hunt enemy
-		- find power up
+		- run away			( Flee )
+		- fight valiantly	( Fight )
+		- heal friendlies	( Heal Friend )
+		- hunt enemy 		( Patrol )
+		- find power ups	( Find )
