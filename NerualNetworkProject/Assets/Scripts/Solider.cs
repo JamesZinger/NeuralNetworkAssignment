@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System;
 using System.Diagnostics;
 
+using Debug = UnityEngine.Debug;
+using Random = UnityEngine.Random;
 
 [RequireComponent( typeof( SpriteRenderer ) )]
 [RequireComponent( typeof( Rigidbody2D ) )]
@@ -27,12 +29,26 @@ public class Solider : MonoBehaviour
 		Health,
 		Speed
 	}
-	
+
+	public enum AIState : byte
+	{
+		None,
+		Flee,
+		Fight,
+		HealFriend,
+		Patrol,
+		Find
+	}
+
 	/// <summary> The solider maximum health.</summary>
 	public const float SOLIDER_MAX_HEALTH = 100;
 
 	/// <summary> The solider maximum ammo.</summary>
 	public const int SOLIDER_MAX_AMMO = 1000;
+
+	public const int SOLIDER_TRACK_FRIENDLY_COUNT = 4;
+
+	public const int SOLIDER_TRACK_ENEMY_COUNT = 5;
 
 	#endregion
 
@@ -43,7 +59,7 @@ public class Solider : MonoBehaviour
 	public float Damage = 10.0f;
 
 	/// <summary> The range that the solider can fire</summary>
-	public float Range = 10.0f;
+	public float Range = 2.0f;
 
 	/// <summary> The amount of shots per second.</summary>
 	public float ShotPerSecond = 10.0f;
@@ -56,6 +72,8 @@ public class Solider : MonoBehaviour
 	[HideInInspector]
 	public LevelManager Manager;
 
+	public AIState aiState;
+
 	#region Private Memebers
 
 	private float health = SOLIDER_MAX_HEALTH;
@@ -67,9 +85,16 @@ public class Solider : MonoBehaviour
 
 	private bool isMoving;
 
-	private Vector2 target;
+	private Vector2 moveTarget;
 
-	#endregion 
+	private Solider[] nearbyFriendlies;
+	private Solider[] nearbyEnemies;
+
+	private Solider attackTarget;
+
+	private bool canShoot;
+
+	#endregion
 
 	#region Properties
 
@@ -90,13 +115,13 @@ public class Solider : MonoBehaviour
 	/// <summary> (read only) Gets the damage per second.</summary>
 	public float DPS
 	{
-		get { return (Damage*ShotPerSecond); }
+		get { return ( Damage * ShotPerSecond ); }
 	}
 
 	/// <summary> (read only) Gets the time between shots.</summary>
 	public float TimeBetweenShots
 	{
-		get { return (1/ShotPerSecond); }
+		get { return ( 1 / ShotPerSecond ); }
 	}
 
 	#endregion
@@ -105,7 +130,6 @@ public class Solider : MonoBehaviour
 
 	void Awake()
 	{
-		rigidbody2D.isKinematic = true;
 	}
 
 	void Start()
@@ -150,7 +174,7 @@ public class Solider : MonoBehaviour
 
 		Manager.RegisterSolider( this );
 
-		target = new Vector2( 0, 0 );
+		moveTarget = new Vector2( 0, 0 );
 		isMoving = false;
 
 		if ( AssignedTeam == Team.Red )
@@ -158,6 +182,12 @@ public class Solider : MonoBehaviour
 
 		else if ( AssignedTeam == Team.Blue )
 			gameObject.renderer.material.color = Color.blue;
+
+		nearbyEnemies = new Solider[ SOLIDER_TRACK_ENEMY_COUNT ];
+		nearbyFriendlies = new Solider[ SOLIDER_TRACK_FRIENDLY_COUNT ];
+
+		canShoot = true; ;
+
 	}
 
 	void Update()
@@ -166,10 +196,48 @@ public class Solider : MonoBehaviour
 		{
 			Vector3 pos = Camera.main.ScreenToWorldPoint( Input.mousePosition );
 
-			target = new Vector2( pos.x, pos.y );
+			moveTarget = new Vector2( pos.x, pos.y );
 			isMoving = true;
+		}
 
+		if ( isMoving )
+		{
+			if ( Manager.Debugging )
+			{
+				Debug.DrawLine( transform.position, moveTarget, Color.green );
+			}
+		}
 
+		////////////////////////////////////////////
+		/// AI Update
+
+		calculateNearestEnemies();
+		calculateNearestFriendlies();
+
+		switch ( aiState )
+		{
+			case ( AIState.Flee ):
+				RunAway();
+				break;
+			case ( AIState.Fight ):
+				Fight();
+				break;
+			case ( AIState.Find ):
+				Debug.LogException( new NotImplementedException() );
+				break;
+			case ( AIState.HealFriend ):
+				HealFriendly();
+				Debug.LogException( new NotImplementedException() );
+				break;
+			case ( AIState.Patrol ):
+				Patrol();
+				Debug.LogException( new NotImplementedException() );
+				break;
+			case ( AIState.None ):
+				break;
+			default:
+				Debug.LogException( new ArgumentException() );
+				break;
 		}
 	}
 
@@ -180,7 +248,7 @@ public class Solider : MonoBehaviour
 		if ( isMoving )
 		{
 
-			Vector2 Direction = target - new Vector2( transform.position.x, transform.position.y );
+			Vector2 Direction = moveTarget - new Vector2( transform.position.x, transform.position.y );
 
 			float theta = Mathf.Atan2( Direction.y, Direction.x );
 
@@ -192,64 +260,14 @@ public class Solider : MonoBehaviour
 
 			rigidbody2D.velocity = ( Direction * MovementSpeed );
 
-			Vector2 Diff = target - new Vector2( transform.position.x, transform.position.y );
+			Vector2 Diff = moveTarget - new Vector2( transform.position.x, transform.position.y );
 
 			Diff.x = Mathf.Abs( Diff.x );
 			Diff.y = Mathf.Abs( Diff.y );
 
 			if ( Diff.x < 0.2f && Diff.y < 0.2f )
 			{
-				Stopwatch sw = new Stopwatch();
-				sw.Start();
-
 				isMoving = false;
-				rigidbody2D.isKinematic = true;
-
-				Dictionary<float, Solider> EnemyList = new Dictionary<float,Solider>();
-				Dictionary<float, Solider> FriendlyList = new Dictionary<float,Solider>();
-
-				if ( AssignedTeam == Team.Red )
-				{
-					List<Solider> L = Manager.Teams[ Team.Blue ];
-
-					for ( int i = 0; i < L.Count; i++ )
-					{
-
-						float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
-						EnemyList.Add( dis, L[ i ] );
-					}
-
-					L = Manager.Teams[ Team.Red ];
-
-					for ( int i = 0; i < L.Count; i++ )
-					{
-
-						float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
-						FriendlyList.Add( dis, L[ i ] );
-					}
-
-				}
-
-				ArrayList SortedEnemyDis = new ArrayList();
-
-				SortedEnemyDis.AddRange( EnemyList.Keys );
-
-				SortedEnemyDis.Sort();
-
-				ArrayList SortedFriendlyDis = new ArrayList();
-
-				SortedFriendlyDis.AddRange( FriendlyList.Keys );
-
-				SortedFriendlyDis.Sort();
-
-				sw.Stop();
-
-				UnityEngine.Debug.Log( "Operation Took: " + sw.ElapsedTicks + " Ticks");
-			}
-
-			if ( Manager.Debugging )
-			{
-				UnityEngine.Debug.DrawLine( transform.position, target, Color.green );
 			}
 		}
 		else
@@ -291,7 +309,7 @@ public class Solider : MonoBehaviour
 			transform.position = Position;
 
 			isMoving = false;
-			rigidbody2D.isKinematic = true;
+			aiState = AIState.None;
 		}
 
 	}
@@ -304,16 +322,15 @@ public class Solider : MonoBehaviour
 
 		GetComponent<SpriteRenderer>().sprite = DeadSprite;
 		Manager.DeregisterSolider( this );
-
+		collider2D.enabled = false;
 	}
 
 	/// <summary> Move to the specificed position.</summary>
 	/// <param name="Position"> The position to move toward.</param>
-	public void MoveTo( Vector2 Position )
+	private void MoveTo( Vector2 Position )
 	{
-		target = Position;
+		moveTarget = Position;
 		isMoving = true;
-		rigidbody2D.isKinematic = false;
 	}
 
 	/// <summary> Applies the damage described by AppliedDamage.</summary>
@@ -356,21 +373,36 @@ public class Solider : MonoBehaviour
 	/// <param name="target"> Target for the Solider.</param>
 	public void Shoot( Solider target )
 	{
-		if ( !isMoving )
+		if ( !isMoving && canShoot )
 		{
-			transform.LookAt( target.transform );
 
 			if ( ( target.transform.position - transform.position ).magnitude < Range )
 			{
+
+				float angle = 0;
+
+				Vector2 diff = target.transform.position - transform.position;
+
+				angle = Mathf.Atan2( diff.y, diff.x );
+
+				angle *= Mathf.Rad2Deg;
+
+				//Debug.Log( "Angle: " + angle );
+
+				transform.rotation = Quaternion.Euler( 0, 0, angle );
+
 				//Random 50% change to hit
 
-				float chance = UnityEngine.Random.Range( 0.0f, 100.0f );
+				float chance = Random.Range( 0.0f, 100.0f );
 
 				if ( chance > 50 )
 				{
 					target.ApplyDamage( Damage + EffectedDamage );
-
 				}
+
+				canShoot = false;
+
+				StartCoroutine( shotWaitTime() );
 			}
 		}
 	}
@@ -423,6 +455,146 @@ public class Solider : MonoBehaviour
 
 				break;
 		}
+	}
+
+	private IEnumerator shotWaitTime()
+	{
+		yield return new WaitForSeconds( 1.0f / ShotPerSecond );
+		canShoot = true;
+	}
+
+	private void calculateNearestEnemies()
+	{
+		Dictionary<float, Solider> EnemyList = new Dictionary<float, Solider>();
+
+		List<Solider> L = Manager.Teams[ Team.Blue ];
+
+		if ( AssignedTeam == Team.Blue )
+			L = Manager.Teams[ Team.Red ];
+
+		else if ( AssignedTeam == Team.Red )
+			L = Manager.Teams[ Team.Blue ];
+
+		for ( int i = 0; i < L.Count; i++ )
+		{
+
+			float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
+			EnemyList.Add( dis, L[ i ] );
+		}
+
+		List<float> SortedEnemyDis = new List<float>( 6 );
+
+		SortedEnemyDis.AddRange( EnemyList.Keys );
+
+		SortedEnemyDis.Sort();
+
+		for ( int i = 0; i < SOLIDER_TRACK_ENEMY_COUNT && i < SortedEnemyDis.Count; i++ )
+		{
+			nearbyEnemies[ i ] = EnemyList[ SortedEnemyDis[ i ] ];
+		}
+
+	}
+
+	private void calculateNearestFriendlies()
+	{
+		List<Solider> L = Manager.Teams[ AssignedTeam ];
+
+		Dictionary<float, Solider> FriendlyList = new Dictionary<float, Solider>();
+
+		for ( int i = 0; i < L.Count; i++ )
+		{
+
+			float dis = Vector3.Distance( L[ i ].transform.position, transform.position );
+			FriendlyList.Add( dis, L[ i ] );
+		}
+
+		List<float> SortedFriendlyDis = new List<float>( 6 );
+
+		SortedFriendlyDis.AddRange( FriendlyList.Keys );
+
+		SortedFriendlyDis.Sort();
+
+		for ( int i = 0; i < SOLIDER_TRACK_FRIENDLY_COUNT && i < SortedFriendlyDis.Count; i++ )
+		{
+			nearbyFriendlies[ i ] = FriendlyList[ SortedFriendlyDis[ i ] ];
+		}
+	}
+
+	/// <summary> Executes the run away operation.</summary>
+	private void RunAway()
+	{
+		Vector2 AverageDir = Vector2.zero;
+		int count = 0;
+
+		for ( int i = 0; i < SOLIDER_TRACK_ENEMY_COUNT; i++ )
+		{
+			if ( nearbyEnemies[ i ] != null )
+			{
+				count++;
+				Vector2 dir = nearbyEnemies[ i ].transform.position - transform.position;
+				dir.Normalize();
+				AverageDir += dir;
+			}
+		}
+
+		AverageDir /= count;
+
+		AverageDir.Normalize();
+
+		AverageDir *= -4;
+
+		Vector2 tTarget;
+		tTarget.x = AverageDir.x + transform.position.x;
+		tTarget.y = AverageDir.y + transform.position.y;
+
+		MoveTo( tTarget );
+	}
+
+	/// <summary> Executes the fight operation.</summary>
+	private void Fight()
+	{
+
+		attackTarget = nearbyEnemies[ 0 ];
+
+		float distance;
+		try
+		{
+			distance = Vector2.Distance( transform.position, attackTarget.transform.position );
+		}
+		catch ( NullReferenceException e )
+		{
+			e.ToString();
+			return;
+		}
+
+		if ( distance < Range )
+		{
+			isMoving = false;
+			Shoot( attackTarget );
+		}
+		else
+		{
+			Vector2 dir = attackTarget.transform.position - transform.position;
+			dir.Normalize();
+
+			dir *= ( distance - Range );
+
+
+
+			MoveTo( (Vector2)transform.position + dir );
+		}
+	}
+
+	/// <summary> Executes the patrol operation</summary>
+	private void Patrol()
+	{
+
+	}
+
+	/// <summary> Executes the heal friendly operation.</summary>
+	private void HealFriendly()
+	{
+
 	}
 
 }
