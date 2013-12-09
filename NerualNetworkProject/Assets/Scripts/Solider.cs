@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 using System.Diagnostics;
+using ArtificialNeuralNetwork;
 
 using Debug = UnityEngine.Debug;
 using Random = UnityEngine.Random;
@@ -75,6 +76,8 @@ public class Solider : MonoBehaviour
 	public AIState aiState;
 
 	#region Private Memebers
+
+	private MLP neuralNetwork;
 
 	private float health = SOLIDER_MAX_HEALTH;
 
@@ -186,8 +189,36 @@ public class Solider : MonoBehaviour
 		nearbyEnemies = new Solider[ SOLIDER_TRACK_ENEMY_COUNT ];
 		nearbyFriendlies = new Solider[ SOLIDER_TRACK_FRIENDLY_COUNT ];
 
-		canShoot = true; ;
+		canShoot = true;
 
+		///// Start up and train the NN /////
+		
+		// Set up the MLP and configure its inputs to receive inputs within the expected ranges
+		// Note: This is to allow the MLP to normalize inputs to the range [0, 1]
+		neuralNetwork = new MLP( 20, 20, 6, ActivationFunction.Threshold );
+		for ( int i = 0; i < 5; i++ )
+		{
+			neuralNetwork.Inputs[ i ].MinValue =    0f; // Current health, friendly health
+			neuralNetwork.Inputs[ i ].MaxValue =  100f;
+		}
+		for ( int i = 5; i < 10; i++ )
+		{
+			neuralNetwork.Inputs[ i ].MinValue =    0f; // Current ammo, friendly ammo
+			neuralNetwork.Inputs[ i ].MaxValue = 1000f;
+		}
+		for ( int i = 10; i < 15; i++ )
+		{
+			neuralNetwork.Inputs[ i ].MinValue =    1f; // Nearest powerup distance, friendly distances
+			neuralNetwork.Inputs[ i ].MaxValue =    5f;
+		}
+		for ( int i = 15; i < 20; i++ )
+		{
+			neuralNetwork.Inputs[ i ].MinValue =    1f; // Nearest powerup distance, friendly distances
+			neuralNetwork.Inputs[ i ].MaxValue =    5f;
+		}
+
+		// Train the system with hardcoded training data
+		TrainNN();
 	}
 
 	void Update()
@@ -213,6 +244,8 @@ public class Solider : MonoBehaviour
 
 		calculateNearestEnemies();
 		calculateNearestFriendlies();
+
+		SelectState();
 
 		switch ( aiState )
 		{
@@ -517,6 +550,160 @@ public class Solider : MonoBehaviour
 		for ( int i = 0; i < SOLIDER_TRACK_FRIENDLY_COUNT && i < SortedFriendlyDis.Count; i++ )
 		{
 			nearbyFriendlies[ i ] = FriendlyList[ SortedFriendlyDis[ i ] ];
+		}
+	}
+
+	/// <summary>Train the neural network with a set of hardcoded training data.</summary>
+	private void TrainNN()
+	{
+		// Set up a sufficent set of training data for the perceptron
+		// Train the system to output a 1 for the state the system is in and 0 for every other state
+		float[] NONE   = new float[] { 1, 0, 0, 0, 0, 0 };
+		float[] FLEE   = new float[] { 0, 1, 0, 0, 0, 0 };
+		float[] FIGHT  = new float[] { 0, 0, 1, 0, 0, 0 };
+		float[] HEAL   = new float[] { 0, 0, 0, 1, 0, 0 };
+		float[] PATROL = new float[] { 0, 0, 0, 0, 1, 0 };
+		float[] FIND   = new float[] { 0, 0, 0, 0, 0, 1 };
+		TrainingSet[] trainingData = new TrainingSet[] {
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, NONE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FLEE   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIGHT  ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, HEAL   ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, PATROL ),
+			new TrainingSet( new float[] {	  0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0	}, FIND   )
+		};
+
+		// Train the system with the above data
+		// Note: Training will fail right now so it is disabled.
+		//neuralNetwork.Train( trainingData, 1f, 1f, -0.2f, 0.2f ); 
+	}
+
+	/// <summary>Cycle the neural network and use its output to select the current AI state.</summary>
+	private void SelectState()
+	{
+		// Compute distances to each friendly
+		float[] friendlyDistances = new float[ 4 ];
+		for ( int i = 0; i < friendlyDistances.Length; i++ )
+		{
+			if ( nearbyFriendlies[ i ] == null )
+				friendlyDistances[ i ] = 10000f;
+			else
+				friendlyDistances[ i ] = Vector2.Distance( nearbyFriendlies[ i ].transform.position, transform.position );
+		}
+
+		// Compute distances to each enemy
+		float[] enemyDistances = new float[ 5 ];
+		for ( int i = 0; i < enemyDistances.Length; i++ )
+		{
+			if ( nearbyEnemies[ i ] == null )
+				enemyDistances[ i ] = 10000f;
+			else
+				enemyDistances[ i ] = Vector2.Distance( nearbyEnemies[ i ].transform.position, transform.position );
+		}
+
+		// Read inputs into MLP inputs
+		neuralNetwork.Inputs[  0 ].Value = Health;
+		neuralNetwork.Inputs[  1 ].Value = ( nearbyFriendlies[ 0 ] != null ) ? nearbyFriendlies[ 0 ].Health : 0f;
+		neuralNetwork.Inputs[  2 ].Value = ( nearbyFriendlies[ 1 ] != null ) ? nearbyFriendlies[ 1 ].Health : 0f;
+		neuralNetwork.Inputs[  3 ].Value = ( nearbyFriendlies[ 2 ] != null ) ? nearbyFriendlies[ 2 ].Health : 0f;
+		neuralNetwork.Inputs[  4 ].Value = ( nearbyFriendlies[ 3 ] != null ) ? nearbyFriendlies[ 3 ].Health : 0f;
+		neuralNetwork.Inputs[  5 ].Value = Ammo;
+		neuralNetwork.Inputs[  6 ].Value = ( nearbyFriendlies[ 0 ] != null ) ? nearbyFriendlies[ 0 ].Ammo : 0f;
+		neuralNetwork.Inputs[  7 ].Value = ( nearbyFriendlies[ 1 ] != null ) ? nearbyFriendlies[ 1 ].Ammo : 0f;
+		neuralNetwork.Inputs[  8 ].Value = ( nearbyFriendlies[ 2 ] != null ) ? nearbyFriendlies[ 2 ].Ammo : 0f;
+		neuralNetwork.Inputs[  9 ].Value = ( nearbyFriendlies[ 3 ] != null ) ? nearbyFriendlies[ 3 ].Ammo : 0f;
+		neuralNetwork.Inputs[ 10 ].Value = 0f;
+		neuralNetwork.Inputs[ 11 ].Value = friendlyDistances[ 0 ];
+		neuralNetwork.Inputs[ 12 ].Value = friendlyDistances[ 1 ];
+		neuralNetwork.Inputs[ 13 ].Value = friendlyDistances[ 2 ];
+		neuralNetwork.Inputs[ 14 ].Value = friendlyDistances[ 3 ];
+		neuralNetwork.Inputs[ 15 ].Value = enemyDistances[ 0 ];
+		neuralNetwork.Inputs[ 16 ].Value = enemyDistances[ 1 ];
+		neuralNetwork.Inputs[ 17 ].Value = enemyDistances[ 2 ];
+		neuralNetwork.Inputs[ 18 ].Value = enemyDistances[ 3 ];
+		neuralNetwork.Inputs[ 19 ].Value = enemyDistances[ 4 ];
+
+		// Cycle the MLP to compute its output
+		neuralNetwork.Cycle();
+
+		// Read outputs into AI state
+		if ( neuralNetwork.Outputs[ (int)AIState.Flee ].Value > 0.8f )
+		{
+			aiState = AIState.Flee;
+		}
+		else if ( neuralNetwork.Outputs[ (int)AIState.Fight ].Value > 0.8f )
+		{
+			aiState = AIState.Fight;
+		}
+		else if ( neuralNetwork.Outputs[ (int)AIState.HealFriend ].Value > 0.8f )
+		{
+			aiState = AIState.HealFriend;
+		}
+		else if ( neuralNetwork.Outputs[ (int)AIState.Patrol ].Value > 0.8f )
+		{
+			aiState = AIState.Patrol;
+		}
+		else if ( neuralNetwork.Outputs[ (int)AIState.Find ].Value > 0.8f )
+		{
+			aiState = AIState.Find;
+		}
+		else
+		{
+			aiState = AIState.None;
 		}
 	}
 
